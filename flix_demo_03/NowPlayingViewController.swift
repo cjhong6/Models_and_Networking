@@ -15,10 +15,10 @@ class NowPlayingViewController: UIViewController, UITableViewDataSource, UITable
     @IBOutlet weak var tableView: UITableView!
     @IBOutlet weak var searchBar: UISearchBar!
     
-    var movies: [[String:Any]] = []
+    var movies: [Movie] = []
     var refreshControl:UIRefreshControl!
     var alertController = UIAlertController()
-    var filteredData: [[String:Any]] = []
+    var filteredData: [Movie] = []
     
     
     override func viewDidLoad() {
@@ -31,53 +31,24 @@ class NowPlayingViewController: UIViewController, UITableViewDataSource, UITable
         tableView.insertSubview(refreshControl, at: 0)
         
         tableView.dataSource = self
-        fetchMovie()
-        
-    }
-    
-    
-    func refreshControlAction(_ refreshControl: UIRefreshControl){
-        fetchMovie()
-    }
-    
-    func fetchMovie(){
-        let url = URL(string: "https://api.themoviedb.org/3/movie/now_playing?api_key=a07e22bc18f5cb106bfe4cc1f83ad8ed")!
-        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
-        
-        MBProgressHUD.showAdded(to: self.view, animated: true)
-        
-        let session = URLSession(configuration: .default, delegate: nil, delegateQueue: OperationQueue.main)
-        let task = session.dataTask(with: request) { (data, response, error) in
-            
-            MBProgressHUD.hide(for: self.view, animated: true)
-            
-            if let error = error {
-                print(error.localizedDescription)
-                
-                self.alertController = UIAlertController(title: "Error", message: "\(error.localizedDescription)", preferredStyle: .alert)
-                let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { (action) in
-                    // handle cancel response here. Doing nothing will dismiss the view.
-                }
-                self.alertController.addAction(cancelAction)
-                DispatchQueue.global().async(execute: {
-                    DispatchQueue.main.sync{
-                        self.present(self.alertController, animated: true, completion: nil)
-                        
-                    }
-                })
-                
-            } else if let data = data {
-                
-                let dataDictionary = try! JSONSerialization.jsonObject(with: data, options: []) as! [String: Any]
-                let movies = dataDictionary["results"] as! [[String:Any]]
+        MovieApiManager().nowPlayingMovies { (movies: [Movie]?, error: Error?) in
+            if let movies = movies {
                 self.movies = movies
                 self.filteredData = self.movies
-                self.refreshControl.endRefreshing()
                 self.tableView.reloadData()
-                
             }
         }
-        task.resume()
+        
+    }
+    
+    func refreshControlAction(_ refreshControl: UIRefreshControl){
+        MovieApiManager().nowPlayingMovies { (movies: [Movie]?, error: Error?) in
+            if let movies = movies {
+                self.movies = movies
+                self.filteredData = self.movies
+                self.tableView.reloadData()
+            }
+        }
     }
     
     override func didReceiveMemoryWarning() {
@@ -93,25 +64,13 @@ class NowPlayingViewController: UIViewController, UITableViewDataSource, UITable
     
     public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell{
         let cell = tableView.dequeueReusableCell(withIdentifier: "MovieCell", for: indexPath) as! MovieCell
-        let movie = self.filteredData[indexPath.row]
-        let title = movie["title"] as! String
-        let overview = movie["overview"] as! String
-        
-        cell.title.text = title
-        cell.overview.text = overview
-        
-        let posterPathString = movie["poster_path"] as! String
-        let baseURLString = "https://image.tmdb.org/t/p/w500"
-        let posterURL = URL(string: baseURLString + posterPathString)!
-        
-        cell.posterImageView.af_setImage(withURL: posterURL)
-        
+        cell.movie = self.filteredData[indexPath.row]
         return cell
     }
     
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        filteredData = searchText.isEmpty ? movies : movies.filter { (movie: [String:Any]) -> Bool in
-            return (movie["title"] as! String).range(of: searchText, options: .caseInsensitive) != nil
+        filteredData = searchText.isEmpty ? movies : movies.filter { (movie: Movie) -> Bool in
+            return (movie.title ).range(of: searchText, options: .caseInsensitive) != nil
         }
         
         tableView.reloadData()
@@ -124,7 +83,7 @@ class NowPlayingViewController: UIViewController, UITableViewDataSource, UITable
             let detailViewController = segue.destination as! DetailViewController
             detailViewController.movie = movie
         }
-        
+
     }
     
 }
